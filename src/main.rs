@@ -786,6 +786,26 @@ impl App {
         }
     }
 
+    // Approximates "is a text input currently focused" via which page/dialog is showing, since
+    // there's no cheap way to query real per-widget focus here. Used to stop global keybinds
+    // (e.g. Ctrl+Alt+D) from firing while typing into the find bar or shortcuts search instead.
+    fn text_input_focused(&self) -> bool {
+        if self.find {
+            return true;
+        }
+
+        if self.core.window.show_context {
+            match self.context_page {
+                ContextPage::KeyboardShortcuts => return true,
+                ContextPage::Profiles => return true,
+                ContextPage::ColorSchemes(_) => return self.color_scheme_renaming.is_some(),
+                _ => {}
+            }
+        }
+
+        false
+    }
+
     // Call this any time the tab changes
     fn update_title(&mut self, pane: Option<pane_grid::Pane>) -> Task<Message> {
         let pane = pane.unwrap_or(self.pane_model.focused());
@@ -2433,6 +2453,11 @@ impl Application for App {
                 config_set!(focus_follow_mouse, focus_follow_mouse);
             }
             Message::Key(modifiers, physical, key) => {
+                // Don't steal keypresses meant for a focused text input
+                if self.shortcut_capture.is_none() && self.text_input_focused() {
+                    return Task::none();
+                }
+
                 // Hard-coded keys
                 match key {
                     Key::Named(Named::Copy) => {
